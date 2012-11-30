@@ -1,8 +1,13 @@
 package com.vorsk.irbaboon;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 import android.app.ActionBar;
 import android.app.FragmentTransaction;
 import android.content.Context;
+import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
@@ -10,6 +15,7 @@ import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
 import android.support.v4.app.NavUtils;
 import android.support.v4.view.ViewPager;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -17,6 +23,13 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+
+//import com.hoho.android.usbserial.R;
+import com.hoho.android.usbserial.driver.UsbSerialDriver;
+import com.hoho.android.usbserial.driver.UsbSerialProber;
+import com.hoho.android.usbserial.util.HexDump;
+import com.hoho.android.usbserial.util.SerialInputOutputManager;
+
 
 public class Home extends FragmentActivity implements ActionBar.TabListener {
 
@@ -32,11 +45,42 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
      * The {@link ViewPager} that will host the section contents.
      */
     ViewPager mViewPager;
+    
+    SerialInputOutputManager mSerialIoManager;
+    UsbManager mUsbManager;
+    UsbSerialDriver mSerialDevice;
+    
+    private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+    
+    private final String TAG = Home.class.getSimpleName();
+    
+    private final SerialInputOutputManager.Listener mListener =
+            new SerialInputOutputManager.Listener() {
+
+        @Override
+        public void onRunError(Exception e) {
+            Log.d(TAG, "Runner stopped.");
+        }
+
+        @Override
+        public void onNewData(final byte[] data) {
+            Home.this.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Home.this.updateReceivedData(data);
+                }
+            });
+        }
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_home);
+        
+        // Create USB Serial Manager
+        mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        
         // Create the adapter that will return a fragment for each of the three primary sections
         // of the app.
         mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
@@ -70,6 +114,70 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
                             .setTabListener(this));
         }
     }
+    
+    public void onResume(){
+    	super.onResume();
+    	
+    	// connecting to usb device
+        mSerialDevice = UsbSerialProber.acquire(mUsbManager);
+        Log.d(TAG, "Resumed, mSerialDevice=" + mSerialDevice);
+        if (mSerialDevice == null) {
+            //mTitleTextView.setText("No serial device.");
+        } else {
+            try {
+                mSerialDevice.open();
+            } catch (IOException e) {
+                Log.e(TAG, "Error setting up device: " + e.getMessage(), e);
+                //mTitleTextView.setText("Error opening device: " + e.getMessage());
+                try {
+                    mSerialDevice.close();
+                } catch (IOException e2) {
+                    // Ignore.
+                }
+                mSerialDevice = null;
+                return;
+            }
+            //mTitleTextView.setText("Serial device: " + mSerialDevice);
+        }
+        onDeviceStateChange();
+    	
+    }
+    
+    private void stopIoManager() {
+        if (mSerialIoManager != null) {
+            Log.i(TAG, "Stopping io manager ..");
+            mSerialIoManager.stop();
+            mSerialIoManager = null;
+        }
+    }
+
+    private void startIoManager() {
+        if (mSerialDevice != null) {
+            Log.i(TAG, "Starting io manager ..");
+            mSerialIoManager = new SerialInputOutputManager(mSerialDevice, mListener);
+            mExecutor.submit(mSerialIoManager);
+        }
+    }
+    
+    private void onDeviceStateChange() {
+        stopIoManager();
+        startIoManager();
+    }
+    
+    private void updateReceivedData(byte[] data) {
+    	
+    	String message = "Read " + data.length + " bytes: \n";
+    	
+    	for (int i = 0; i < data.length; i++)
+    	{
+    		message += Integer.toBinaryString((int) data[i]);
+    	}
+    	message +="\n";
+    	
+    	TextView view = ((DummySectionFragment)mSectionsPagerAdapter.getItem(0)).textView;
+        view.append(message);
+
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -92,6 +200,8 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
     @Override
     public void onTabReselected(ActionBar.Tab tab, FragmentTransaction fragmentTransaction) {
     }
+    
+    
 
     /**
      * A {@link FragmentPagerAdapter} that returns a fragment corresponding to one of the primary
@@ -114,15 +224,16 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
 
         @Override
         public int getCount() {
+        	// number of items
             return 3;
         }
 
         @Override
         public CharSequence getPageTitle(int position) {
             switch (position) {
-                case 0: return getString(R.string.title_section1).toUpperCase();
-                case 1: return getString(R.string.title_section2).toUpperCase();
-                case 2: return getString(R.string.title_section3).toUpperCase();
+                case 0: return "Home";//return getString(R.string.title_section1).toUpperCase();
+                case 1: return "Remote";//getString(R.string.title_section2).toUpperCase();
+                case 2: return "Some\nSection\nName";//getString(R.string.title_section3).toUpperCase();
             }
             return null;
         }
@@ -132,6 +243,8 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
      * A dummy fragment representing a section of the app, but that simply displays dummy text.
      */
     public static class DummySectionFragment extends Fragment {
+    	public TextView textView;
+    	
         public DummySectionFragment() {
         }
 
@@ -140,10 +253,10 @@ public class Home extends FragmentActivity implements ActionBar.TabListener {
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                 Bundle savedInstanceState) {
-            TextView textView = new TextView(getActivity());
-            textView.setGravity(Gravity.CENTER);
+            textView = new TextView(getActivity());
+            //textView.setGravity(Gravity.CENTER);
             Bundle args = getArguments();
-            textView.setText(Integer.toString(args.getInt(ARG_SECTION_NUMBER)));
+            textView.setText(Integer.toString(args.getInt(ARG_SECTION_NUMBER)) + "\n");
             return textView;
         }
     }
