@@ -127,6 +127,7 @@ public class Home extends Activity {
     	
     	Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     	globalTextView = (TextView)findViewById(R.id.textview);
+    	globalTextView.append(message);
     }
 
     @Override
