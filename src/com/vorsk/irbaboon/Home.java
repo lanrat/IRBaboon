@@ -74,24 +74,43 @@ public class Home extends Activity {
     
     public void onResume(){
     	super.onResume();
+    	byte array[] = new byte[512];
     	// connecting to usb device
+    	Toast.makeText(this, "On Resume", Toast.LENGTH_SHORT).show();
         mSerialDevice = UsbSerialProber.acquire(mUsbManager);
         if (mSerialDevice == null) {
+        	Toast.makeText(this, "On Resume null", Toast.LENGTH_SHORT).show();
         } else {
-            try {
-                mSerialDevice.open();
-            } catch (IOException e) {
-                Log.e(TAG, "Error setting up device: " + e.getMessage(), e);
-                try {
-                    mSerialDevice.close();
-                } catch (IOException e2) {
-                    // Ignore.
-                }
-                mSerialDevice = null;
-                return;
+        	Toast.makeText(this, "On Resume not null before read", Toast.LENGTH_SHORT).show();
+        	try {
+        		mSerialDevice.open();
+    			mSerialDevice.read(array, 10000);
+    		} catch (IOException e) {
+    			// TODO Auto-generated catch block
+    			e.printStackTrace();
+    		}
+        	Toast.makeText(this, "On Resume not null after read", Toast.LENGTH_SHORT).show();
+            String byteString = "";
+            for (int i = 0; i < array.length; i++)
+            {
+            	byteString += Integer.toBinaryString((int)array[i]);
             }
+            Toast.makeText(this, "On Resume before write", Toast.LENGTH_SHORT).show();
+            globalTextView = (TextView)findViewById(R.id.textview);
+            globalTextView.append(byteString);
+            try {
+    			mSerialDevice.write(array, 10000);
+    			Toast.makeText(this, "On Resume after write", Toast.LENGTH_SHORT).show();
+    		} catch (IOException e) {
+    			// TODO Auto-generated catch block
+    			e.printStackTrace();
+    			
+    		}
+
+          
         }
-        onDeviceStateChange();
+        
+        //onDeviceStateChange();
     	
     }
     
